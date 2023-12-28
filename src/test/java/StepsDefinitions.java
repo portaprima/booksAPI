@@ -1,3 +1,4 @@
+import com.fasterxml.jackson.core.JsonProcessingException;
 import dto.Book;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java.Before;
@@ -19,10 +20,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 public class StepsDefinitions {
     Properties prop = new Properties();
     FileInputStream file;
     Response response;
+    JsonNode jsonResponse;
     int bookId;
     RequestSpecification request;
 
@@ -36,8 +41,7 @@ public class StepsDefinitions {
 
     private static Book getBookFromDataTable(DataTable table) {
         Map<String, String> dataTableBook = table.asMaps(String.class, String.class).get(0);
-        return new Book(dataTableBook.get("name"), dataTableBook.get("author"), dataTableBook.get("publication"), dataTableBook.get("category"),
-                Integer.parseInt(dataTableBook.get("pages")), new BigDecimal(dataTableBook.get("price")));
+        return new Book(dataTableBook.get("name"), dataTableBook.get("author"), dataTableBook.get("publication"), dataTableBook.get("category"), Integer.parseInt(dataTableBook.get("pages")), new BigDecimal(dataTableBook.get("price")));
 
     }
 
@@ -55,13 +59,12 @@ public class StepsDefinitions {
         prop.load(file);
         RestAssured.baseURI = prop.getProperty("baseUrl");
         RestAssured.basePath = prop.getProperty("basePath");
-        request = RestAssured.given();
+        request = RestAssured.given().log().all();
         request.header("Content-Type", "application/json");
     }
 
     @Given("correct username and password used")
     public void correctUsernameAndPasswordUsed() {
-
         request.auth().basic(prop.getProperty("username"), prop.getProperty("password"));
     }
 
@@ -78,12 +81,10 @@ public class StepsDefinitions {
         request.body(requestParams.toString());
         response = request.post();
         Assert.assertNotEquals("Add book service returns code 200 for book with duplicated data", 200, response.getStatusCode());
-        bookId = Integer.parseInt(response.jsonPath().getString("id"));
-
     }
 
     @When("creating book with the following data")
-    public void creatingBookWithTheFollowingData(DataTable table) {
+    public void creatingBookWithTheFollowingData(DataTable table) throws JsonProcessingException {
         Book expectedBook = getBookFromDataTable(table);
         JSONObject requestParams = new JSONObject();
         requestParams.put("name", expectedBook.getName());
@@ -95,10 +96,17 @@ public class StepsDefinitions {
         request.body(requestParams.toString());
         response = request.post();
         Assert.assertEquals("Add book service returns code other than 200: " + response.getBody().prettyPrint(), 200, response.getStatusCode());
-        bookId = Integer.parseInt(response.jsonPath().getString("id"));
+        jsonResponse = responseAsJsonNode(response);
+        bookId = jsonResponse.get("id").intValue();
         Book actualBook = getBookFromResponse(bookId);
         expectedBook.setId(bookId);
         Assert.assertEquals("Created book has wrong data", expectedBook, actualBook);
+    }
+
+    private JsonNode responseAsJsonNode(Response response) throws JsonProcessingException {
+        String responseBody = response.getBody().asString();
+        ObjectMapper objectMapper = new ObjectMapper();
+        return objectMapper.readTree(responseBody);
     }
 
     @And("book has correct data")
@@ -113,8 +121,7 @@ public class StepsDefinitions {
     }
 
     private Book getBookFromResponse(int bookId) {
-        return new Book(bookId, response.jsonPath().getString("name"), response.jsonPath().getString("author"), response.jsonPath().getString("publication"), response.jsonPath().getString("category"),
-                Integer.parseInt(response.jsonPath().getString("pages")), new BigDecimal(response.jsonPath().getString("price")));
+        return new Book(bookId, jsonResponse.get("name").textValue(), jsonResponse.get("author").textValue(), jsonResponse.get("publication").textValue(), jsonResponse.get("category").textValue(), jsonResponse.get("pages").intValue(), jsonResponse.get("price").decimalValue());
     }
 
     @And("book present in all books")
@@ -122,13 +129,14 @@ public class StepsDefinitions {
         Book expectedBook = getBookFromDataTable(table);
         expectedBook.setId(bookId);
         response = request.get();
+        jsonResponse = responseAsJsonNode(response);
+
         boolean bookFound = false;
-        for (Object book : response.jsonPath().getList("")) {
-            Map<String, Object> bookMap = (Map<String, Object>) book;
-            if ((Integer) (bookMap.get("id")) == expectedBook.getId()) {
-                Book actualBook = new Book(Integer.parseInt(bookMap.get("id").toString()), bookMap.get("name").toString(), bookMap.get("author").toString(), bookMap.get("publication").toString(), bookMap.get("category").toString(),
-                        Integer.parseInt(bookMap.get("pages").toString()), new BigDecimal(bookMap.get("price").toString()));
-                Assert.assertEquals("Data of book with id: " + expectedBook.getId() + "wrong", expectedBook, actualBook);
+        for (JsonNode book : jsonResponse) {
+            if (book.has("id") && book.get("id").isInt() && book.get("id").asInt() == expectedBook.getId()) {
+                Book actualBook = new Book(book.get("id").asInt(), book.get("name").asText(), book.get("author").asText(), book.get("publication").asText(), book.get("category").asText(), book.get("pages").asInt(), new BigDecimal(book.get("price").asText()));
+
+                Assert.assertEquals("Data of book with id: " + expectedBook.getId() + " is wrong", expectedBook, actualBook);
 
                 bookFound = true;
                 break;
@@ -157,13 +165,14 @@ public class StepsDefinitions {
     public void bookIsNoLongerPresentInAllBooks() throws Exception {
         response = request.get();
         boolean bookFound = false;
-        for (Object book : response.jsonPath().getList("")) {
-            Map<String, Object> bookMap = (Map<String, Object>) book;
-            if ((Integer) (bookMap.get("id")) == bookId) {
+        jsonResponse = responseAsJsonNode(response);
+        for (JsonNode book : jsonResponse) {
+            if (book.has("id") && book.get("id").isInt() && book.get("id").asInt() == bookId) {
                 bookFound = true;
                 break;
             }
         }
+
         if (bookFound) {
             throw new Exception("Book with id: " + bookId + " is found on the books list");
         }
@@ -186,16 +195,22 @@ public class StepsDefinitions {
     }
 
     @And("there are no books in the db")
-    public void thereAreNoBooksInTheDB() {
+    public void thereAreNoBooksInTheDB() throws Exception {
         response = request.get();
-        for (Object book : response.jsonPath().getList("")) {
-            Map<String, Object> bookMap = (Map<String, Object>) book;
-            String id = bookMap.get("id").toString();
-            response = request.delete("/" + id);
-            Assert.assertEquals("Delete book returns code other than 200 for id: " + id + ". " + response.getBody().prettyPrint(), 200, response.getStatusCode());
-        }
-        response = request.get();
+        jsonResponse = responseAsJsonNode(response);
         List<Object> bookList = response.jsonPath().getList("");
+       if(!bookList.isEmpty()) {
+           for (JsonNode book : jsonResponse) {
+               if (book.has("id")) {
+                   String id = book.get("id").asText();
+                   Response deleteResponse = request.delete("/" + id);
+                   Assert.assertEquals("Delete book returns code other than 200 for id: " + id + ". " + deleteResponse.getBody().prettyPrint(),
+                           200, deleteResponse.getStatusCode());
+               }
+           }
+       }
+        response = request.get();
+        bookList = response.jsonPath().getList("");
         Assert.assertTrue("There are books in the db", bookList.isEmpty());
     }
 

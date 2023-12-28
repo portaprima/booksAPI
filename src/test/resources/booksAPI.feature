@@ -36,6 +36,11 @@ Feature: Books API test
       | name     | author     | publication    | category | pages | price   |
       | Book One | Author One | New Dawn Books | New Age  | 100   | [blank] |
 
+  Scenario: Not possible to add book with string price
+    Then not possible to create book with wrong data
+      | name     | author     | publication    | category | pages | price |
+      | Book One | Author One | New Dawn Books | New Age  | 100   | abc   |
+
   Scenario: Not possible to add book with price < 0
     Then not possible to create book with wrong data
       | name     | author     | publication    | category | pages | price |
@@ -45,6 +50,11 @@ Feature: Books API test
     Then not possible to create book with wrong data
       | name     | author     | publication    | category | pages | price |
       | Book One | Author One | New Dawn Books | New Age  | -100  | 200   |
+
+  Scenario: Not possible to add book with string pages
+    Then not possible to create book with wrong data
+      | name     | author     | publication    | category | pages | price |
+      | Book One | Author One | New Dawn Books | New Age  | cde   | 200   |
 
   Scenario: Not possible to add duplicated book
     Given creating book with the following data
