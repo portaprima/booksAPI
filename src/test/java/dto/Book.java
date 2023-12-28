@@ -2,26 +2,27 @@ package dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
 
 @Data
-@RequiredArgsConstructor
 @AllArgsConstructor
 public class Book {
     int id;
-    @NonNull
+
+    public Book(String name, String author, String publication, String category, int pages, BigDecimal price) {
+        this.name = name;
+        this.author = author;
+        this.publication = publication;
+        this.category = category;
+        this.pages = pages;
+        this.price = price;
+    }
+
     String name;
-    @NonNull
     String author;
-    @NonNull
     String publication;
-    @NonNull
     String category;
-    @NonNull
     int pages;
-    @NonNull
     BigDecimal price;
 }
