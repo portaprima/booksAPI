@@ -2,7 +2,7 @@ Feature: Books API test
 
   Background:
     Given correct username and password used
-    And there are no books in the db
+#    And there are no books in the db
 
   Scenario: Book correctly added
     When creating book with the following data
@@ -78,4 +78,3 @@ Feature: Books API test
       | name         | author         | publication          | category       | pages | price |
       | Updated name | Updated Author | UpdatedSun Set Books | UpdatedNew Age | 300   | 299.9 |
 
-#      Zmienić dane książek albo kasować książki przed runem
